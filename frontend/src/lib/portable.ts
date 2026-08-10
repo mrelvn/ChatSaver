@@ -1,5 +1,5 @@
 import type { Note, NoteBlock, VaultBackup } from "@/domain/models";
-import { toPlainText } from "@/lib/plain-text";
+import { toMarkdownText, toPlainText } from "@/lib/plain-text";
 
 function safeFilename(value: string): string {
   const normalized = value
@@ -43,6 +43,36 @@ export function noteToPlainText(note: Note, blocks: NoteBlock[]): string {
   ].join("\n");
 }
 
+export function noteToMarkdown(note: Note, blocks: NoteBlock[]): string {
+  const title = toPlainText(note.title) || "Untitled note";
+  const sections = [...blocks]
+    .sort((left, right) => left.position - right.position)
+    .flatMap((block, index) => {
+      const question = toMarkdownText(block.question) || "_Untitled question_";
+      const answer = toMarkdownText(block.answer) || "_No answer yet._";
+      return [
+        `## Question ${index + 1}`,
+        "",
+        question,
+        "",
+        `## Answer ${index + 1}`,
+        "",
+        answer,
+      ];
+    });
+
+  return [
+    `# ${title}`,
+    "",
+    `> Exported from ChatSaver on ${new Date().toLocaleDateString()}.`,
+    "",
+    ...sections.flatMap((line, index) =>
+      index > 0 && /^## Question /.test(line) ? ["---", "", line] : [line]
+    ),
+    "",
+  ].join("\n");
+}
+
 export function downloadTextFile(filename: string, content: string, type: string): void {
   const url = URL.createObjectURL(new Blob([content], { type }));
   const anchor = document.createElement("a");
@@ -52,11 +82,11 @@ export function downloadTextFile(filename: string, content: string, type: string
   URL.revokeObjectURL(url);
 }
 
-export function downloadNoteText(note: Note, blocks: NoteBlock[]): void {
+export function downloadNoteMarkdown(note: Note, blocks: NoteBlock[]): void {
   downloadTextFile(
-    `${safeFilename(note.title)}.txt`,
-    noteToPlainText(note, blocks),
-    "text/plain;charset=utf-8",
+    `${safeFilename(note.title)}.md`,
+    noteToMarkdown(note, blocks),
+    "text/markdown;charset=utf-8",
   );
 }
 
@@ -64,9 +94,9 @@ export async function shareNoteOffline(
   note: Note,
   blocks: NoteBlock[],
 ): Promise<"shared" | "downloaded"> {
-  const plainText = noteToPlainText(note, blocks);
-  const filename = `${safeFilename(note.title)}.txt`;
-  const file = new File([plainText], filename, { type: "text/plain" });
+  const markdown = noteToMarkdown(note, blocks);
+  const filename = `${safeFilename(note.title)}.md`;
+  const file = new File([markdown], filename, { type: "text/markdown" });
   const isWindows = /Windows/i.test(navigator.userAgent);
 
   if (
@@ -78,7 +108,7 @@ export async function shareNoteOffline(
     return "shared";
   }
 
-  downloadTextFile(filename, plainText, "text/plain;charset=utf-8");
+  downloadTextFile(filename, markdown, "text/markdown;charset=utf-8");
   return "downloaded";
 }
 

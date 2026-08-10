@@ -3,7 +3,7 @@ import type {
   NormalizedConversation,
   NormalizedMessage,
 } from "@/domain/models";
-import { toPlainText } from "@/lib/plain-text";
+import { toMarkdownText } from "@/lib/plain-text";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -25,7 +25,7 @@ function toIsoDate(value: unknown): string | undefined {
 }
 
 function extractText(message: JsonRecord): string {
-  return toPlainText(message.content);
+  return toMarkdownText(message.content);
 }
 
 function extractRole(message: JsonRecord): MessageRole | undefined {

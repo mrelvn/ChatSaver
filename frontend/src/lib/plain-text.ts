@@ -86,3 +86,13 @@ export function toPlainText(value: unknown): string {
   const extracted = extractPlainText(value, new WeakSet<object>(), 0).replace(/\r\n?/g, "\n");
   return removeMarkdownFormatting(extracted);
 }
+
+export function toMarkdownText(value: unknown): string {
+  return extractPlainText(value, new WeakSet<object>(), 0)
+    .replace(/\r\n?/g, "\n")
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trim();
+}

@@ -13,7 +13,7 @@ import type {
   SyncMetadata,
   VaultBackup,
 } from "@/domain/models";
-import { toPlainText } from "@/lib/plain-text";
+import { toMarkdownText, toPlainText } from "@/lib/plain-text";
 
 class ChatSaverDatabase extends Dexie {
   conversations!: EntityTable<Conversation, "id">;
@@ -225,7 +225,7 @@ export async function persistImportedConversations(
         const timestamp = now();
         const sourceTitle = toPlainText(source.title) || "Imported ChatGPT conversation";
         const sourceMessages = source.messages
-          .map((message) => ({ ...message, content: toPlainText(message.content) }))
+          .map((message) => ({ ...message, content: toMarkdownText(message.content) }))
           .filter((message) => message.content);
         const conversation: Conversation = {
           id: makeId(),
@@ -811,13 +811,13 @@ export async function restoreVaultBackup(value: unknown): Promise<number> {
       }));
       const messages = value.messages.map((message) => ({
         ...message,
-        content: toPlainText(message.content),
+        content: toMarkdownText(message.content),
         syncStatus: "pending" as const,
       }));
       const blocks = value.noteBlocks.map((block) => ({
         ...block,
-        question: toPlainText(block.question),
-        answer: toPlainText(block.answer),
+        question: toMarkdownText(block.question),
+        answer: toMarkdownText(block.answer),
         syncStatus: "pending" as const,
       }));
       const blocksByNote = new Map<string, NoteBlock[]>();

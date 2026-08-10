@@ -32,7 +32,7 @@ import {
   updateNoteTitle,
 } from "@/lib/db/database";
 import {
-  downloadNoteText,
+  downloadNoteMarkdown,
   noteToPlainText,
   shareNoteOffline,
 } from "@/lib/portable";
@@ -390,7 +390,7 @@ export function NoteEditor({
   async function share() {
     try {
       const result = await shareNoteOffline(activeNote, blocks);
-      if (result === "downloaded") toast.success("Text file downloaded");
+      if (result === "downloaded") toast.success("Markdown file downloaded");
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       toast.error("The note could not be shared.");
@@ -487,12 +487,12 @@ export function NoteEditor({
                   <DropdownMenuLabel>Note actions</DropdownMenuLabel>
                   <DropdownMenuItem
                     onSelect={() => {
-                      downloadNoteText(note, blocks);
-                      toast.success("Text file downloaded");
+                      downloadNoteMarkdown(note, blocks);
+                      toast.success("Markdown file downloaded");
                     }}
                   >
                     <Download />
-                    Download .txt
+                    Download .md
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => void copyText()}>
                     <Copy />

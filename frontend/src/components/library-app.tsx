@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
-import { useDeferredValue, useEffect, useEffectEvent, useState } from "react";
+import { useDeferredValue, useEffect, useEffectEvent, useRef, useState } from "react";
 import {
   Archive,
   ArrowRight,
@@ -78,6 +78,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { SiteFooter } from "@/components/site-footer";
 import {
+  openVaultSocket,
+  parseVaultSocketMessage,
   refreshAccount,
   synchronizeVault,
   type AuthSession,
@@ -361,6 +363,8 @@ export function LibraryApp() {
   const [isMobileLibraryOpen, setIsMobileLibraryOpen] = useState(false);
   const [session, setSession] = useState<AuthSession>();
   const [syncState, setSyncState] = useState<"idle" | "syncing" | "synced" | "error">("idle");
+  const syncInFlight = useRef(false);
+  const syncQueued = useRef(false);
   const deferredQuery = useDeferredValue(query);
   const isDatabaseReady = useLiveQuery(
     async () => {
@@ -459,11 +463,89 @@ export function LibraryApp() {
     return () => window.removeEventListener("online", syncWhenOnline);
   }, [session]);
 
+  useEffect(() => {
+    if (!session || stats.pending === 0) return;
+    const timer = window.setTimeout(() => requestSync(session, false), 1_000);
+    return () => window.clearTimeout(timer);
+  }, [session, stats.pending]);
+
+  useEffect(() => {
+    if (!session) return;
+    let disposed = false;
+    let socket: WebSocket | undefined;
+    let reconnectTimer: number | undefined;
+    let reconnectAttempt = 0;
+
+    function scheduleReconnect() {
+      if (disposed) return;
+      window.clearTimeout(reconnectTimer);
+      const delay = Math.min(30_000, 1_000 * 2 ** Math.min(reconnectAttempt++, 5));
+      reconnectTimer = window.setTimeout(() => void connect(), delay);
+    }
+
+    async function connect() {
+      if (disposed) return;
+      if (!navigator.onLine) {
+        scheduleReconnect();
+        return;
+      }
+      if (Date.parse(session.expiresAt) <= Date.now() + 30_000) {
+        try {
+          const restored = await refreshAccount();
+          if (!disposed) setSession(restored);
+        } catch {
+          scheduleReconnect();
+        }
+        return;
+      }
+      try {
+        const nextSocket = await openVaultSocket(session.accessToken);
+        if (disposed) {
+          nextSocket.close();
+          return;
+        }
+        socket = nextSocket;
+        nextSocket.onopen = () => {
+          reconnectAttempt = 0;
+        };
+        nextSocket.onmessage = (event) => {
+          if (parseVaultSocketMessage(event.data)) requestSync(session, false);
+        };
+        nextSocket.onerror = () => nextSocket.close();
+        nextSocket.onclose = scheduleReconnect;
+      } catch {
+        scheduleReconnect();
+      }
+    }
+
+    function reconnectWhenOnline() {
+      if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
+      window.clearTimeout(reconnectTimer);
+      reconnectAttempt = 0;
+      void connect();
+    }
+
+    void connect();
+    window.addEventListener("online", reconnectWhenOnline);
+    return () => {
+      disposed = true;
+      window.clearTimeout(reconnectTimer);
+      window.removeEventListener("online", reconnectWhenOnline);
+      socket?.close();
+    };
+  }, [session]);
+
   async function runSync(currentSession = session, announce = true) {
-    if (!currentSession || syncState === "syncing") {
+    if (!currentSession) {
       if (!currentSession) setIsAccountOpen(true);
       return;
     }
+    if (syncInFlight.current) {
+      syncQueued.current = true;
+      return;
+    }
+    syncInFlight.current = true;
+    let nextSession = currentSession;
     setSyncState("syncing");
     try {
       const result = await synchronizeVault(currentSession.accessToken, currentSession.user.id);
@@ -477,6 +559,7 @@ export function LibraryApp() {
       try {
         const restored = await refreshAccount();
         setSession(restored);
+        nextSession = restored;
         const result = await synchronizeVault(restored.accessToken, restored.user.id);
         setSyncState("synced");
         if (announce) toast.success("Vault synced", { description: `${result.pulled} remote records applied.` });
@@ -487,6 +570,12 @@ export function LibraryApp() {
             description: firstError instanceof Error ? firstError.message : "Your changes are still safe locally.",
           });
         }
+      }
+    } finally {
+      syncInFlight.current = false;
+      if (syncQueued.current) {
+        syncQueued.current = false;
+        requestSync(nextSession, false);
       }
     }
   }

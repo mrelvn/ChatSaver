@@ -100,6 +100,7 @@ Synchronization routes:
 Deploy `frontend/` as the Vercel project root. Set `API_ORIGIN` to the HTTPS origin of the deployed
 Spring Boot API; Next.js proxies `/api/*` on the same site so secure, strict refresh cookies work
 without exposing the backend URL to the browser.
+Set `NEXT_PUBLIC_WEBSOCKET_URL` to that API origin so signed-in clients receive live sync notices.
 
 Deploy `backend/` on the VPS using its included `Dockerfile`. Database credentials, the exact web
 origin, JWT signing key, secure-cookie mode, connection pool, and server settings are consolidated

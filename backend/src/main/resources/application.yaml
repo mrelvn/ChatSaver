@@ -52,7 +52,7 @@ management:
       show-details: never
 
 chatsaver:
-  web-origin: ${WEB_ORIGIN:https://chat-saver.vercel.app}
+  web-origin: ${WEB_ORIGIN:http://localhost:3000}
   auth:
     issuer: ${JWT_ISSUER:chatsaver-api}
     secret: ${JWT_SECRET:Vh9qJ2mP7xR4cN8sL1wK6tY3uF0aD5gB9eZ2pQ7rM4nX8jC1vH6kS3yT0iW5oA9d}

@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import dev.chatsaver.api.auth.AuthenticatedUser;
+import dev.chatsaver.api.realtime.VaultSocketHandler;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -28,16 +29,22 @@ import jakarta.validation.constraints.Size;
 public class SyncController {
 
     private final SyncService syncService;
+    private final VaultSocketHandler sockets;
 
-    public SyncController(SyncService syncService) {
+    public SyncController(SyncService syncService, VaultSocketHandler sockets) {
         this.syncService = syncService;
+        this.sockets = sockets;
     }
 
     @PostMapping("/push")
     PushResponse push(
             @AuthenticationPrincipal AuthenticatedUser user,
             @Valid @RequestBody PushRequest request) {
-        return new PushResponse(syncService.push(user, request.mutations()));
+        SyncService.PushResult result = syncService.push(user, request.mutations());
+        if (result.cursor() != null) {
+            sockets.publish(user.userId(), user.deviceId(), result.cursor());
+        }
+        return new PushResponse(result.accepted());
     }
 
     @GetMapping("/snapshot")
@@ -49,7 +56,8 @@ public class SyncController {
 
     @DeleteMapping("/vault")
     ResponseEntity<Void> eraseVault(@AuthenticationPrincipal AuthenticatedUser user) {
-        syncService.eraseVault(user.userId());
+        long cursor = syncService.eraseVault(user.userId());
+        sockets.publish(user.userId(), user.deviceId(), cursor);
         return ResponseEntity.noContent().build();
     }
 

@@ -32,8 +32,9 @@ public class SyncService {
     }
 
     @Transactional
-    public int push(AuthenticatedUser user, List<Mutation> mutations) {
+    public PushResult push(AuthenticatedUser user, List<Mutation> mutations) {
         int accepted = 0;
+        Long latestCursor = null;
         for (Mutation mutation : mutations) {
             validateMutation(mutation);
             Integer exists = jdbc.queryForObject("""
@@ -60,6 +61,7 @@ public class SyncService {
                             WHERE user_id = ? AND change_cursor IS NULL
                             """, cursor, user.userId());
                 }
+                if (cursor != null) latestCursor = cursor;
             }
             jdbc.update("""
                     INSERT INTO mutation_receipt
@@ -69,7 +71,7 @@ public class SyncService {
             accepted++;
         }
         jdbc.update("UPDATE device SET last_seen_at = now() WHERE id = ?", user.deviceId());
-        return accepted;
+        return new PushResult(accepted, latestCursor);
     }
 
     @Transactional
@@ -306,7 +308,7 @@ public class SyncService {
     }
 
     @Transactional
-    public void eraseVault(UUID userId) {
+    public long eraseVault(UUID userId) {
         markAll("conversation", "conversation", userId);
         markAll("message", "message", userId);
         markAll("note", "note", userId);
@@ -325,6 +327,7 @@ public class SyncService {
             jdbc.update("UPDATE deletion_marker SET change_cursor = ? WHERE user_id = ?",
                     cursor, userId);
         }
+        return cursor == null ? 0 : cursor;
     }
 
     private void markAll(String entityType, String table, UUID userId) {
@@ -534,6 +537,9 @@ public class SyncService {
             DeletedEntities deleted,
             long cursor,
             Instant serverTime) {
+    }
+
+    public record PushResult(int accepted, Long cursor) {
     }
 
     public record DeletedEntities(

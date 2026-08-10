@@ -24,6 +24,17 @@ export interface AuthSession {
   expiresAt: string;
 }
 
+export interface VaultSocketMessage {
+  type: "vault.changed";
+  cursor: number;
+  occurredAt: string;
+}
+
+interface SocketTicket {
+  ticket: string;
+  expiresAt: string;
+}
+
 interface VaultSnapshot {
   conversations: Conversation[];
   messages: Message[];
@@ -113,6 +124,38 @@ export function refreshAccount(): Promise<AuthSession> {
 
 export function logoutAccount(): Promise<void> {
   return request("/api/v1/auth/logout", { method: "POST", body: "{}" });
+}
+
+export async function openVaultSocket(accessToken: string): Promise<WebSocket> {
+  const issued = await request<SocketTicket>("/api/v1/realtime/socket-ticket", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: "{}",
+  });
+  const configuredRoot = process.env.NEXT_PUBLIC_WEBSOCKET_URL?.trim();
+  const httpRoot = configuredRoot || API_ROOT || window.location.origin;
+  const socketRoot = httpRoot
+    .replace(/^https:/, "wss:")
+    .replace(/^http:/, "ws:")
+    .replace(/\/$/, "");
+  return new WebSocket(`${socketRoot}/ws/sync?ticket=${encodeURIComponent(issued.ticket)}`);
+}
+
+export function parseVaultSocketMessage(value: unknown): VaultSocketMessage | undefined {
+  if (typeof value !== "string") return undefined;
+  try {
+    const message = JSON.parse(value) as Partial<VaultSocketMessage>;
+    if (
+      message.type !== "vault.changed"
+      || !Number.isSafeInteger(message.cursor)
+      || typeof message.occurredAt !== "string"
+    ) {
+      return undefined;
+    }
+    return message as VaultSocketMessage;
+  } catch {
+    return undefined;
+  }
 }
 
 export function eraseSyncedVault(accessToken: string): Promise<void> {

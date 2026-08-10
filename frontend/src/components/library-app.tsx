@@ -77,6 +77,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SiteFooter } from "@/components/site-footer";
+import { MessageVaultVisual } from "@/components/message-vault-visual";
 import {
   openVaultSocket,
   parseVaultSocketMessage,
@@ -663,7 +664,8 @@ export function LibraryApp() {
           </span>
         </header>
 
-        <main className="relative z-10 flex min-h-[calc(100dvh-8.75rem)] items-end px-5 pb-12 pt-12 sm:px-8 sm:pb-16 lg:items-center lg:px-12 lg:pb-10 lg:pt-0">
+        <main className="relative z-10 flex min-h-[calc(100dvh-8.75rem)] items-center px-5 py-12 sm:px-8 sm:py-16 lg:px-12 lg:py-10">
+          <div className="mx-auto grid w-full max-w-[1240px] items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(320px,390px)] lg:gap-14 xl:gap-20">
           <section className="w-full max-w-[690px]">
             <div className="mb-6 flex items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/62">
               <span className="h-px w-9 bg-primary" />
@@ -704,6 +706,8 @@ export function LibraryApp() {
               Imported notes are saved in this device's local vault.
             </div>
           </section>
+          <MessageVaultVisual />
+          </div>
         </main>
 
         <SiteFooter />

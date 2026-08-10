@@ -363,6 +363,7 @@ export function LibraryApp() {
   const [isMobileLibraryOpen, setIsMobileLibraryOpen] = useState(false);
   const [session, setSession] = useState<AuthSession>();
   const [syncState, setSyncState] = useState<"idle" | "syncing" | "synced" | "error">("idle");
+  const [realtimeState, setRealtimeState] = useState<"offline" | "connecting" | "connected">("offline");
   const syncInFlight = useRef(false);
   const syncQueued = useRef(false);
   const deferredQuery = useDeferredValue(query);
@@ -471,6 +472,8 @@ export function LibraryApp() {
 
   useEffect(() => {
     if (!session) return;
+    const activeSession = session;
+    setRealtimeState("connecting");
     let disposed = false;
     let socket: WebSocket | undefined;
     let reconnectTimer: number | undefined;
@@ -489,7 +492,7 @@ export function LibraryApp() {
         scheduleReconnect();
         return;
       }
-      if (Date.parse(session.expiresAt) <= Date.now() + 30_000) {
+      if (Date.parse(activeSession.expiresAt) <= Date.now() + 30_000) {
         try {
           const restored = await refreshAccount();
           if (!disposed) setSession(restored);
@@ -499,7 +502,7 @@ export function LibraryApp() {
         return;
       }
       try {
-        const nextSocket = await openVaultSocket(session.accessToken);
+        const nextSocket = await openVaultSocket(activeSession.accessToken);
         if (disposed) {
           nextSocket.close();
           return;
@@ -507,14 +510,21 @@ export function LibraryApp() {
         socket = nextSocket;
         nextSocket.onopen = () => {
           reconnectAttempt = 0;
+          setRealtimeState("connected");
         };
         nextSocket.onmessage = (event) => {
-          if (parseVaultSocketMessage(event.data)) requestSync(session, false);
+          if (parseVaultSocketMessage(event.data)) requestSync(activeSession, false);
         };
         nextSocket.onerror = () => nextSocket.close();
-        nextSocket.onclose = scheduleReconnect;
+        nextSocket.onclose = () => {
+          if (!disposed) setRealtimeState("connecting");
+          scheduleReconnect();
+        };
       } catch {
-        scheduleReconnect();
+        if (!disposed) {
+          setRealtimeState("connecting");
+          scheduleReconnect();
+        }
       }
     }
 
@@ -781,20 +791,26 @@ export function LibraryApp() {
                 >
                   {syncState === "syncing" ? (
                     <LoaderCircle className="size-3 animate-spin text-primary" />
-                  ) : session ? (
+                  ) : session && realtimeState === "connected" ? (
                     <Cloud className="size-3 text-emerald-300" />
                   ) : (
                     <CloudOff className="size-3 text-amber-300" />
                   )}
                   {syncState === "syncing"
                     ? "Syncing"
+                    : session && realtimeState === "connected" && stats.pending === 0
+                      ? "Live sync"
                     : session && stats.pending === 0
                       ? "Up to date"
                       : `${stats.pending} local changes`}
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                {session ? "Sync with your PostgreSQL vault" : "Sign in to back up and recover this vault"}
+                {session && realtimeState === "connected"
+                  ? "Live sync connected"
+                  : session
+                    ? "Sync with your PostgreSQL vault"
+                    : "Sign in to back up and recover this vault"}
               </TooltipContent>
             </Tooltip>
 
@@ -888,6 +904,7 @@ export function LibraryApp() {
         onLoggedOut={() => {
           setSession(undefined);
           setSyncState("idle");
+          setRealtimeState("offline");
         }}
         onSync={() => void runSync()}
       />

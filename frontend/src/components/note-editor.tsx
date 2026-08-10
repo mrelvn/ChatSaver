@@ -15,7 +15,6 @@ import {
   MessageSquareText,
   MoreHorizontal,
   Plus,
-  Share2,
   Sparkles,
   Star,
   Trash2,
@@ -34,7 +33,6 @@ import {
 import {
   downloadNoteMarkdown,
   noteToPlainText,
-  shareNoteOffline,
 } from "@/lib/portable";
 import { toPlainText } from "@/lib/plain-text";
 import {
@@ -387,16 +385,6 @@ export function NoteEditor({
   }
   const activeNote = note;
 
-  async function share() {
-    try {
-      const result = await shareNoteOffline(activeNote, blocks);
-      if (result === "downloaded") toast.success("Markdown file downloaded");
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      toast.error("The note could not be shared.");
-    }
-  }
-
   async function copyText() {
     try {
       await navigator.clipboard.writeText(noteToPlainText(activeNote, blocks));
@@ -470,11 +458,14 @@ export function NoteEditor({
               <Button
                 variant="outline"
                 className="gap-2"
-                aria-label="Share note"
-                onClick={() => void share()}
+                aria-label="Download note"
+                onClick={() => {
+                  downloadNoteMarkdown(activeNote, blocks);
+                  toast.success("Markdown file downloaded");
+                }}
               >
-                <Share2 />
-                <span className="hidden sm:inline">Share</span>
+                <Download />
+                <span className="hidden sm:inline">Download</span>
               </Button>
 
               <DropdownMenu>
@@ -485,15 +476,6 @@ export function NoteEditor({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel>Note actions</DropdownMenuLabel>
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      downloadNoteMarkdown(note, blocks);
-                      toast.success("Markdown file downloaded");
-                    }}
-                  >
-                    <Download />
-                    Download .md
-                  </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => void copyText()}>
                     <Copy />
                     Copy plain text

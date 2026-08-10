@@ -90,28 +90,6 @@ export function downloadNoteMarkdown(note: Note, blocks: NoteBlock[]): void {
   );
 }
 
-export async function shareNoteOffline(
-  note: Note,
-  blocks: NoteBlock[],
-): Promise<"shared" | "downloaded"> {
-  const markdown = noteToMarkdown(note, blocks);
-  const filename = `${safeFilename(note.title)}.md`;
-  const file = new File([markdown], filename, { type: "text/markdown" });
-  const isWindows = /Windows/i.test(navigator.userAgent);
-
-  if (
-    !isWindows &&
-    navigator.share &&
-    (!navigator.canShare || navigator.canShare({ files: [file] }))
-  ) {
-    await navigator.share({ files: [file] });
-    return "shared";
-  }
-
-  downloadTextFile(filename, markdown, "text/markdown;charset=utf-8");
-  return "downloaded";
-}
-
 export function downloadVaultBackup(backup: VaultBackup): void {
   const day = backup.exportedAt.slice(0, 10);
   downloadTextFile(

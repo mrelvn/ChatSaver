@@ -139,8 +139,12 @@ function QaBlockEditor({
 }) {
   const [question, setQuestion] = useState(block.question);
   const [answer, setAnswer] = useState(() => toPlainText(block.answer));
+  const [questionExpanded, setQuestionExpanded] = useState(false);
+  const [answerExpanded, setAnswerExpanded] = useState(false);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const questionId = `question-${block.id}`;
+  const answerId = `answer-${block.id}`;
 
   function save(nextQuestion: string, nextAnswer: string, delay = 500) {
     clearTimeout(saveTimer.current);
@@ -228,13 +232,14 @@ function QaBlockEditor({
         </div>
 
         <div className="grid gap-0 lg:grid-cols-2">
-          <label className="border-b border-white/6 p-4 lg:border-e lg:border-b-0 sm:p-5">
-            <span className="mb-3 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
+          <div className="border-b border-white/6 p-4 lg:border-e lg:border-b-0 sm:p-5">
+            <label htmlFor={questionId} className="mb-3 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
               <span className="size-1.5 rounded-full bg-primary" />
               Question
-            </span>
+            </label>
             <Textarea
-              className="min-h-36 resize-y border-0 bg-black/20 leading-6 shadow-inner shadow-black/10 focus-visible:ring-primary/35"
+              id={questionId}
+              className={`${questionExpanded ? "h-80 resize-y overflow-auto" : "h-36 resize-none overflow-hidden"} field-sizing-fixed border-0 bg-black/20 leading-6 shadow-inner shadow-black/10 focus-visible:ring-primary/35`}
               placeholder="What do you want to remember?"
               value={question}
               onChange={(event) => {
@@ -243,15 +248,27 @@ function QaBlockEditor({
               }}
               onBlur={() => save(question, answer, 0)}
             />
-          </label>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="mt-2 px-2 text-xs text-primary"
+              aria-controls={questionId}
+              aria-expanded={questionExpanded}
+              onClick={() => setQuestionExpanded((expanded) => !expanded)}
+            >
+              {questionExpanded ? "Show less" : "Read more"}
+            </Button>
+          </div>
 
-          <label className="p-4 sm:p-5">
-            <span className="mb-3 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-ivory/70">
+          <div className="p-4 sm:p-5">
+            <label htmlFor={answerId} className="mb-3 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-ivory/70">
               <span className="size-1.5 rounded-full bg-ivory/70" />
               Answer
-            </span>
+            </label>
             <Textarea
-              className="min-h-36 resize-y border-0 bg-black/20 leading-6 shadow-inner shadow-black/10 focus-visible:ring-primary/35"
+              id={answerId}
+              className={`${answerExpanded ? "h-80 resize-y overflow-auto" : "h-36 resize-none overflow-hidden"} field-sizing-fixed border-0 bg-black/20 leading-6 shadow-inner shadow-black/10 focus-visible:ring-primary/35`}
               placeholder="Write the answer in your own words…"
               value={answer}
               onChange={(event) => {
@@ -260,7 +277,18 @@ function QaBlockEditor({
               }}
               onBlur={() => save(question, answer, 0)}
             />
-          </label>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="mt-2 px-2 text-xs text-ivory/70"
+              aria-controls={answerId}
+              aria-expanded={answerExpanded}
+              onClick={() => setAnswerExpanded((expanded) => !expanded)}
+            >
+              {answerExpanded ? "Show less" : "Read more"}
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>

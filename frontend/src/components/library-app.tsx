@@ -658,10 +658,31 @@ export function LibraryApp() {
             />
             <span className="text-[15px] font-semibold tracking-[-0.03em]">ChatSaver</span>
           </Link>
-          <span className="hidden items-center gap-2 font-mono text-[9px] uppercase tracking-[0.2em] text-white/55 sm:flex">
-            <span className="size-1.5 rounded-full bg-emerald-300 shadow-[0_0_12px_rgba(110,231,183,.7)]" />
-            Local-first vault
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="hidden items-center gap-2 font-mono text-[9px] uppercase tracking-[0.2em] text-white/55 md:flex">
+              <span className="size-1.5 rounded-full bg-emerald-300 shadow-[0_0_12px_rgba(110,231,183,.7)]" />
+              Local-first vault
+            </span>
+            {session ? (
+              <Button variant="ghost" size="icon-lg" aria-label="Open account and sync" onClick={() => setIsAccountOpen(true)}>
+                <Avatar className="size-8 border border-white/10">
+                  <AvatarFallback className="bg-ivory text-[11px] font-semibold text-black">
+                    {session.user.displayName?.slice(0, 2).toUpperCase() || session.user.email.slice(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                className="h-9 gap-2 border-white/12 bg-black/25 px-2.5 text-xs text-white backdrop-blur-md hover:border-primary/30 hover:bg-primary/10 sm:px-3"
+                aria-label="Sign in or sign up"
+                onClick={() => setIsAccountOpen(true)}
+              >
+                <ShieldCheck className="text-primary" />
+                <span className="hidden sm:inline">Sign in / Sign up</span>
+              </Button>
+            )}
+          </div>
         </header>
 
         <main className="relative z-10 flex min-h-[calc(100dvh-8.75rem)] items-center px-5 py-12 sm:px-8 sm:py-16 lg:px-12 lg:py-10">
@@ -729,6 +750,23 @@ export function LibraryApp() {
           open={isVaultOpen}
           onOpenChange={setIsVaultOpen}
           accessToken={session?.accessToken}
+        />
+        <AccountDialog
+          open={isAccountOpen}
+          session={session}
+          syncing={syncState === "syncing"}
+          onOpenChange={setIsAccountOpen}
+          onAuthenticated={(authenticated) => {
+            setSession(authenticated);
+            setIsAccountOpen(false);
+            void runSync(authenticated);
+          }}
+          onLoggedOut={() => {
+            setSession(undefined);
+            setSyncState("idle");
+            setRealtimeState("offline");
+          }}
+          onSync={() => void runSync()}
         />
       </div>
     );
@@ -841,13 +879,26 @@ export function LibraryApp() {
               <TooltipContent>Backup, restore, and storage</TooltipContent>
             </Tooltip>
 
-            <Button variant="ghost" size="icon-lg" aria-label="Open account and sync" onClick={() => setIsAccountOpen(true)}>
-              <Avatar className="size-8 border border-white/10">
-                <AvatarFallback className="bg-ivory text-[11px] font-semibold text-black">
-                  {session?.user.displayName?.slice(0, 2).toUpperCase() ?? "CS"}
-                </AvatarFallback>
-              </Avatar>
-            </Button>
+            {session ? (
+              <Button variant="ghost" size="icon-lg" aria-label="Open account and sync" onClick={() => setIsAccountOpen(true)}>
+                <Avatar className="size-8 border border-white/10">
+                  <AvatarFallback className="bg-ivory text-[11px] font-semibold text-black">
+                    {session.user.displayName?.slice(0, 2).toUpperCase() || session.user.email.slice(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                className="h-9 gap-2 border-white/10 bg-black/20 px-2.5 text-xs hover:border-primary/25 hover:bg-primary/10 sm:px-3"
+                aria-label="Sign in or sign up"
+                onClick={() => setIsAccountOpen(true)}
+              >
+                <ShieldCheck className="text-primary" />
+                <span className="hidden xl:inline">Sign in / Sign up</span>
+                <span className="hidden sm:inline xl:hidden">Sign in</span>
+              </Button>
+            )}
           </div>
         </header>
 

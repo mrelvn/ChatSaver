@@ -1,14 +1,13 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { Cloud, LoaderCircle, LogOut, ShieldCheck } from "lucide-react";
+import { Cloud, Copy, Download, LoaderCircle, LogOut, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -53,7 +52,7 @@ export function AccountDialog({
         description: "Your local vault is syncing with PostgreSQL.",
       });
     } catch (error) {
-      toast.error("Could not sign in", {
+      toast.error(mode === "register" ? "Could not create account" : "Could not sign in", {
         description: error instanceof Error ? error.message : "Please check the API and try again.",
       });
     } finally {
@@ -74,23 +73,30 @@ export function AccountDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="border-white/10 bg-[#0b090a]/96 sm:max-w-md">
-        <DialogHeader>
-          <div className="mb-3 grid size-11 place-items-center rounded-2xl border border-primary/25 bg-primary/12 text-primary">
+      <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] overflow-x-hidden overflow-y-auto overscroll-contain border-white/10 bg-[#0b090a]/96 p-0 shadow-[0_28px_90px_rgba(0,0,0,.58),0_0_70px_oklch(0.48_0.2_24/.12)] sm:max-h-[calc(100dvh-2rem)] sm:w-full sm:max-w-[440px]">
+        <div className="h-px bg-gradient-to-r from-transparent via-primary/70 to-transparent" />
+        <DialogHeader className="px-4 pt-4 sm:px-6 sm:pt-6">
+          <div className="mb-1 grid size-10 place-items-center rounded-xl border border-primary/25 bg-primary/12 text-primary shadow-[0_12px_34px_oklch(0.5_0.22_24/.18)] sm:mb-2 sm:size-11 sm:rounded-2xl">
             {session ? <ShieldCheck /> : <Cloud />}
           </div>
-          <DialogTitle className="text-xl tracking-[-0.035em]">
-            {session ? "Your synced vault" : "Recover your library anywhere"}
+          <DialogTitle className="pe-7 text-xl tracking-[-0.04em] sm:text-[1.35rem]">
+            {session
+              ? "Your synced vault"
+              : mode === "register"
+                ? "Take your library anywhere"
+                : "Welcome back to your vault"}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="max-w-sm text-xs leading-relaxed sm:text-sm">
             {session
               ? `Signed in as ${session.user.email}. Your IndexedDB vault remains the fast local source.`
-              : "Work offline first. Sign in when connected to back up and restore your notes from PostgreSQL."}
+              : mode === "register"
+                ? "Create an account only when you want access to your PostgreSQL cloud vault."
+                : "Sign in to restore and sync your library. Your local vault stays available without an account."}
           </DialogDescription>
         </DialogHeader>
 
         {session ? (
-          <div className="rounded-2xl border border-white/8 bg-white/[0.035] p-4">
+          <div className="mx-4 mb-4 rounded-2xl border border-white/8 bg-white/[0.035] p-4 sm:mx-6 sm:mb-6">
             <p className="text-sm font-medium">{session.user.displayName || session.user.email}</p>
             <p className="mt-1 text-xs text-muted-foreground">{session.user.email}</p>
             <div className="mt-4 flex gap-2">
@@ -105,13 +111,13 @@ export function AccountDialog({
             </div>
           </div>
         ) : (
-          <form className="space-y-4" onSubmit={submit}>
-            <div className="grid grid-cols-2 rounded-xl border border-white/8 bg-black/20 p-1">
-              <Button type="button" size="sm" variant={mode === "login" ? "secondary" : "ghost"} onClick={() => setMode("login")}>
+          <form className="space-y-3 px-4 pb-4 sm:space-y-4 sm:px-6 sm:pb-6" onSubmit={submit}>
+            <div className="grid grid-cols-2 rounded-xl border border-white/8 bg-black/25 p-1">
+              <Button type="button" size="sm" variant={mode === "login" ? "secondary" : "ghost"} aria-pressed={mode === "login"} onClick={() => setMode("login")}>
                 Sign in
               </Button>
-              <Button type="button" size="sm" variant={mode === "register" ? "secondary" : "ghost"} onClick={() => setMode("register")}>
-                Create account
+              <Button type="button" size="sm" variant={mode === "register" ? "secondary" : "ghost"} aria-pressed={mode === "register"} onClick={() => setMode("register")}>
+                Sign up
               </Button>
             </div>
             {mode === "register" ? (
@@ -128,12 +134,18 @@ export function AccountDialog({
               Password
               <Input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete={mode === "register" ? "new-password" : "current-password"} required minLength={mode === "register" ? 12 : undefined} maxLength={72} placeholder={mode === "register" ? "At least 12 characters" : "Your password"} />
             </label>
-            <DialogFooter>
-              <Button className="w-full" type="submit" disabled={busy}>
-                {busy ? <LoaderCircle className="animate-spin" /> : <Cloud />}
-                {busy ? "Connecting…" : mode === "register" ? "Create and sync" : "Sign in and restore"}
-              </Button>
-            </DialogFooter>
+            <Button className="royal-glow h-10 w-full" type="submit" disabled={busy}>
+              {busy ? <LoaderCircle className="animate-spin" /> : <Cloud />}
+              {busy ? "Connecting…" : mode === "register" ? "Create account and sync" : "Sign in and restore"}
+            </Button>
+
+            <div className="rounded-xl border border-white/7 bg-white/[0.025] px-3.5 py-2.5 sm:py-3">
+              <p className="text-[11px] font-medium text-foreground">No account required</p>
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 font-mono text-[9px] uppercase tracking-wide text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5"><Download className="size-3 text-primary" />Download .md</span>
+                <span className="inline-flex items-center gap-1.5"><Copy className="size-3 text-primary" />Copy as text</span>
+              </div>
+            </div>
           </form>
         )}
       </DialogContent>

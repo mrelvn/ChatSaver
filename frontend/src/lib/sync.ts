@@ -8,8 +8,7 @@ import type {
 import { db } from "@/lib/db/database";
 
 const API_ROOT = (
-  process.env.NEXT_PUBLIC_API_URL
-  ?? (process.env.NODE_ENV === "production" ? "" : "http://localhost:8080")
+  process.env.NEXT_PUBLIC_API_URL ?? ""
 ).replace(/\/$/, "");
 
 export interface AccountUser {
@@ -133,7 +132,8 @@ export async function openVaultSocket(accessToken: string): Promise<WebSocket> {
     body: "{}",
   });
   const configuredRoot = process.env.NEXT_PUBLIC_WEBSOCKET_URL?.trim();
-  const httpRoot = configuredRoot || API_ROOT || window.location.origin;
+  const httpRoot = configuredRoot
+    || (process.env.NODE_ENV === "production" ? window.location.origin : "http://localhost:8080");
   const socketRoot = httpRoot
     .replace(/^https:/, "wss:")
     .replace(/^http:/, "ws:")

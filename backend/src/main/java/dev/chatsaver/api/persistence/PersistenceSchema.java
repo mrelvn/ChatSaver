@@ -68,6 +68,32 @@ class AppUserEntity {
 }
 
 @Entity
+@Table(name = "pending_registration")
+class PendingRegistrationEntity {
+    @Id
+    @Column(length = 320)
+    String email;
+    @Column(name = "password_hash", nullable = false, length = 255)
+    String passwordHash;
+    @Column(name = "display_name", length = 160)
+    String displayName;
+    @Column(name = "verification_code_hash", nullable = false, length = 64)
+    String verificationCodeHash;
+    @Column(name = "device_id", nullable = false)
+    UUID deviceId;
+    @Column(name = "device_name", nullable = false, length = 160)
+    String deviceName;
+    @Column(nullable = false, columnDefinition = "integer default 0")
+    int attempts;
+    @Column(name = "expires_at", nullable = false)
+    Instant expiresAt;
+    @Column(name = "last_sent_at", nullable = false)
+    Instant lastSentAt;
+    @Column(name = "created_at", nullable = false, columnDefinition = "timestamptz default now()")
+    Instant createdAt;
+}
+
+@Entity
 @Table(name = "device", indexes = @Index(name = "idx_device_user", columnList = "user_id"))
 class DeviceEntity {
     @Id

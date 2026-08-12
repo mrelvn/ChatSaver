@@ -21,6 +21,11 @@ export interface AuthSession {
   expiresAt: string;
 }
 
+export interface RegistrationChallenge {
+  email: string;
+  expiresAt: string;
+}
+
 export interface VaultSocketMessage {
   type: "vault.changed";
   cursor: number;
@@ -89,18 +94,25 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return JSON.parse(responseText) as T;
 }
 
-export function registerAccount(input: {
+export function requestRegistration(input: {
   email: string;
   password: string;
   displayName: string;
-}): Promise<AuthSession> {
-  return request("/api/v1/auth/register", {
+}): Promise<RegistrationChallenge> {
+  return request("/api/v1/auth/register/request", {
     method: "POST",
     body: JSON.stringify({
       ...input,
       deviceId: deviceId(input.email),
       deviceName: navigator.userAgent.includes("Mobile") ? "Mobile browser" : "Desktop browser",
     }),
+  });
+}
+
+export function verifyRegistration(input: { email: string; code: string }): Promise<AuthSession> {
+  return request("/api/v1/auth/register/verify", {
+    method: "POST",
+    body: JSON.stringify(input),
   });
 }
 

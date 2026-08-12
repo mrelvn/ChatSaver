@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import dev.chatsaver.api.auth.AuthService.PublicUser;
+import dev.chatsaver.api.auth.AuthService.RegistrationChallenge;
 import dev.chatsaver.api.auth.AuthService.Session;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
@@ -41,15 +42,22 @@ public class AuthController {
         this.secureCookies = secureCookies;
     }
 
-    @PostMapping("/register")
-    ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
-        Session session = authService.register(
+    @PostMapping("/register/request")
+    ResponseEntity<RegistrationChallenge> requestRegistration(
+            @Valid @RequestBody RegisterRequest request) {
+        RegistrationChallenge challenge = authService.requestRegistration(
                 request.email(),
                 request.password(),
                 request.displayName(),
                 request.deviceId(),
                 request.deviceName());
-        return sessionResponse(session);
+        return ResponseEntity.accepted().body(challenge);
+    }
+
+    @PostMapping("/register/verify")
+    ResponseEntity<AuthResponse> verifyRegistration(
+            @Valid @RequestBody VerifyRegistrationRequest request) {
+        return sessionResponse(authService.verifyRegistration(request.email(), request.code()));
     }
 
     @PostMapping("/login")
@@ -114,6 +122,11 @@ public class AuthController {
             @NotBlank @Size(max = 72) String password,
             @NotNull UUID deviceId,
             @Size(max = 160) String deviceName) {
+    }
+
+    record VerifyRegistrationRequest(
+            @Email @NotBlank @Size(max = 320) String email,
+            @NotBlank @Size(min = 6, max = 6) String code) {
     }
 
     record AuthResponse(PublicUser user, String accessToken, Instant expiresAt) {

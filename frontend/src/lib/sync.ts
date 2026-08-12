@@ -7,9 +7,7 @@ import type {
 } from "@/domain/models";
 import { db } from "@/lib/db/database";
 
-const API_ROOT = (
-  process.env.NEXT_PUBLIC_API_URL ?? ""
-).replace(/\/$/, "");
+const API_ROOT = "";
 
 export interface AccountUser {
   id: string;

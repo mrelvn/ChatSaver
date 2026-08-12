@@ -69,6 +69,7 @@ import {
 interface NoteEditorProps {
   note?: Note;
   blocks: NoteBlock[];
+  emptyView?: "library" | "history";
   onDeleted: () => void;
   onArchived: () => void;
   onImport: () => void;
@@ -294,9 +295,11 @@ function QaBlockEditor({
 }
 
 function EmptyEditor({
+  historyView,
   onImport,
   onCreate,
 }: {
+  historyView: boolean;
   onImport: () => void;
   onCreate: () => void;
 }) {
@@ -306,7 +309,7 @@ function EmptyEditor({
         <div className="mb-7 flex items-center gap-3">
           <Badge className="royal-glow rounded-full px-3 py-1">
             <Sparkles className="size-3" />
-            Offline knowledge studio
+            {historyView ? "Synced history" : "Offline knowledge studio"}
           </Badge>
           <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
             Private by design
@@ -314,14 +317,15 @@ function EmptyEditor({
         </div>
 
         <h1 className="text-balance max-w-4xl text-5xl font-semibold leading-[0.95] tracking-[-0.065em] sm:text-6xl lg:text-8xl">
-          Give your best chats a{" "}
+          {historyView ? "Your conversations, " : "Give your best chats a "}
           <span className="bg-gradient-to-r from-crimson-bright via-ivory to-primary bg-clip-text text-transparent">
-            second life.
+            {historyView ? "ready when you are." : "second life."}
           </span>
         </h1>
         <p className="mt-7 max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">
-          Turn scattered AI conversations into a private, searchable library of questions,
-          answers, and ideas that stays useful without a network connection.
+          {historyView
+            ? "Your synced and imported chats will appear here. Import a new conversation to start building your history."
+            : "Turn scattered AI conversations into a private, searchable library of questions, answers, and ideas that stays useful without a network connection."}
         </p>
 
         <div className="mt-9 flex flex-col gap-3 sm:flex-row">
@@ -375,13 +379,14 @@ function EmptyEditor({
 export function NoteEditor({
   note,
   blocks,
+  emptyView = "library",
   onDeleted,
   onArchived,
   onImport,
   onCreate,
 }: NoteEditorProps) {
   if (!note) {
-    return <EmptyEditor onImport={onImport} onCreate={onCreate} />;
+    return <EmptyEditor historyView={emptyView === "history"} onImport={onImport} onCreate={onCreate} />;
   }
   const activeNote = note;
 

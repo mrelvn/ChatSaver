@@ -932,6 +932,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
           <NoteEditor
             note={selectedNote}
             blocks={blocks}
+            emptyView={historyView ? "history" : "library"}
             onDeleted={() => {
               setSelectedNoteId(undefined);
               if (session) requestSync(session, false);

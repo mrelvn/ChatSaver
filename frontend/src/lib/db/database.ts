@@ -14,6 +14,7 @@ import type {
   VaultBackup,
 } from "@/domain/models";
 import { toMarkdownText, toPlainText } from "@/lib/plain-text";
+import { createClientUuid } from "@/lib/client-uuid";
 
 class ChatSaverDatabase extends Dexie {
   conversations!: EntityTable<Conversation, "id">;
@@ -134,14 +135,18 @@ export function switchLocalVault(sessionVaultId?: string): string {
 }
 
 export function beginAccountVault(userId: string): string {
-  const sessionVaultId = crypto.randomUUID();
-  localStorage.setItem(ACTIVE_SESSION_VAULT, JSON.stringify({ userId, sessionVaultId }));
+  const sessionVaultId = createClientUuid();
+  try {
+    sessionStorage.setItem(ACTIVE_SESSION_VAULT, JSON.stringify({ userId, sessionVaultId }));
+  } catch {
+    // A fresh in-memory vault is still safe when mobile privacy settings deny storage.
+  }
   return switchLocalVault(sessionVaultId);
 }
 
 export function restoreAccountVault(userId: string): string {
   try {
-    const stored = JSON.parse(localStorage.getItem(ACTIVE_SESSION_VAULT) ?? "null") as {
+    const stored = JSON.parse(sessionStorage.getItem(ACTIVE_SESSION_VAULT) ?? "null") as {
       userId?: unknown;
       sessionVaultId?: unknown;
     } | null;
@@ -159,7 +164,11 @@ export function restoreAccountVault(userId: string): string {
 }
 
 export function endAccountVault(): string {
-  localStorage.removeItem(ACTIVE_SESSION_VAULT);
+  try {
+    sessionStorage.removeItem(ACTIVE_SESSION_VAULT);
+  } catch {
+    // The active database is switched below even when storage access is denied.
+  }
   return switchLocalVault();
 }
 
@@ -171,7 +180,7 @@ export async function clearLocalVault(): Promise<void> {
 }
 
 function makeId(): string {
-  return crypto.randomUUID();
+  return createClientUuid();
 }
 
 function now(): string {

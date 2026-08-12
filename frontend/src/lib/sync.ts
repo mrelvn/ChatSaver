@@ -6,6 +6,7 @@ import type {
   OutboxMutation,
 } from "@/domain/models";
 import { db } from "@/lib/db/database";
+import { createClientUuid } from "@/lib/client-uuid";
 
 const API_ROOT = "";
 
@@ -54,10 +55,18 @@ interface VaultSnapshot {
 function deviceId(email: string): string {
   const accountKey = email.trim().toLocaleLowerCase();
   const key = `chatsaver-device-id:${accountKey}`;
-  const current = localStorage.getItem(key);
-  if (current) return current;
-  const created = crypto.randomUUID();
-  localStorage.setItem(key, created);
+  try {
+    const current = localStorage.getItem(key);
+    if (current) return current;
+  } catch {
+    // Mobile privacy modes can deny storage while still allowing authentication.
+  }
+  const created = createClientUuid();
+  try {
+    localStorage.setItem(key, created);
+  } catch {
+    // The server does not require the device ID to be persisted client-side.
+  }
   return created;
 }
 
@@ -291,7 +300,7 @@ function repairMutation(
   entity: Conversation | Note,
 ): OutboxMutation {
   return {
-    id: crypto.randomUUID(),
+    id: createClientUuid(),
     entityType,
     entityId: entity.id,
     operation: "create",

@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useDeferredValue, useEffect, useEffectEvent, useRef, useState } from "react";
 import {
   Archive,
@@ -354,7 +355,8 @@ function LibrarySidebar({
   );
 }
 
-export function LibraryApp() {
+export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<LibraryFilter>("all");
   const [sort, setSort] = useState<NoteSort>("updated-desc");
@@ -597,11 +599,16 @@ export function LibraryApp() {
     }
   }
 
-  function authenticated(authenticatedSession: AuthSession) {
+  async function authenticated(authenticatedSession: AuthSession) {
+    const shouldOpenHistory = !historyView && await db.notes.count() === 0;
     setVaultKey(beginAccountVault(authenticatedSession.user.id));
     setSelectedNoteId(undefined);
     setSession(authenticatedSession);
     setIsAccountOpen(false);
+    if (shouldOpenHistory) {
+      router.replace("/history");
+      return;
+    }
     void runSync(authenticatedSession);
   }
 
@@ -661,7 +668,7 @@ export function LibraryApp() {
 
   if (!isDatabaseReady) return <LibraryLoading />;
 
-  if (totalNotes === 0) {
+  if (totalNotes === 0 && !historyView) {
     return (
       <div className="first-run-canvas relative min-h-dvh overflow-hidden">
         <div className="paint-backdrop paint-backdrop-forward" aria-hidden="true" />
@@ -779,7 +786,7 @@ export function LibraryApp() {
           session={session}
           syncing={syncState === "syncing"}
           onOpenChange={setIsAccountOpen}
-          onAuthenticated={authenticated}
+          onAuthenticated={(authenticatedSession) => void authenticated(authenticatedSession)}
           onLoggedOut={loggedOut}
           onSync={() => void runSync()}
         />
@@ -831,7 +838,7 @@ export function LibraryApp() {
           <Separator orientation="vertical" className="mx-5 hidden h-7 bg-white/8 lg:block" />
           <div className="hidden items-center gap-2 text-xs text-muted-foreground lg:flex">
             <BookOpenText className="size-3.5" />
-            {FILTERS.find((item) => item.id === filter)?.label}
+            {historyView ? "History" : FILTERS.find((item) => item.id === filter)?.label}
             <ChevronRight className="size-3" />
             <span className="max-w-64 truncate text-foreground">
               {selectedNote?.title ?? "Overview"}
@@ -967,7 +974,7 @@ export function LibraryApp() {
         session={session}
         syncing={syncState === "syncing"}
         onOpenChange={setIsAccountOpen}
-        onAuthenticated={authenticated}
+        onAuthenticated={(authenticatedSession) => void authenticated(authenticatedSession)}
         onLoggedOut={loggedOut}
         onSync={() => void runSync()}
       />

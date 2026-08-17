@@ -18,6 +18,7 @@ class DatabaseCleanup {
     @Transactional
     public void removeObsoleteRows() {
         jdbc.update("DELETE FROM refresh_session WHERE expires_at < now()");
+        jdbc.update("DELETE FROM pending_registration WHERE expires_at < now()");
         jdbc.update("""
                 DELETE FROM deletion_marker marker
                 WHERE marker.change_cursor IS NOT NULL

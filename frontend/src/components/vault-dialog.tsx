@@ -45,6 +45,7 @@ interface VaultDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   accessToken?: string;
+  vaultKey: string;
 }
 
 function formatBytes(bytes?: number): string {
@@ -52,13 +53,13 @@ function formatBytes(bytes?: number): string {
   return `${(bytes / 1024 / 1024).toFixed(bytes > 10 * 1024 * 1024 ? 0 : 1)} MB`;
 }
 
-export function VaultDialog({ open, onOpenChange, accessToken }: VaultDialogProps) {
+export function VaultDialog({ open, onOpenChange, accessToken, vaultKey }: VaultDialogProps) {
   const restoreInputRef = useRef<HTMLInputElement>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [storage, setStorage] = useState<{ usage?: number; quota?: number }>({});
   const imports = useLiveQuery(
     () => db.imports.orderBy("createdAt").reverse().limit(6).toArray(),
-    [],
+    [vaultKey],
     [],
   );
   const counts = useLiveQuery(
@@ -71,7 +72,7 @@ export function VaultDialog({ open, onOpenChange, accessToken }: VaultDialogProp
       ]);
       return { notes, conversations, blocks, pending };
     },
-    [],
+    [vaultKey],
     { notes: 0, conversations: 0, blocks: 0, pending: 0 },
   );
 

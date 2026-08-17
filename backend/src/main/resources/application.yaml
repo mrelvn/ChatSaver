@@ -59,6 +59,10 @@ chatsaver:
     access-token-minutes: ${ACCESS_TOKEN_MINUTES:15}
     refresh-token-days: ${REFRESH_TOKEN_DAYS:30}
     secure-cookies: ${SECURE_COOKIES:true}
+  email:
+    brevo-api-key: ${BREVO_API_KEY:}
+    sender-email: ${BREVO_SENDER_EMAIL:}
+    sender-name: ${BREVO_SENDER_NAME:ChatSaver}
 
 ---
 spring:

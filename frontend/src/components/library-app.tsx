@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useDeferredValue, useEffect, useEffectEvent, useRef, useState } from "react";
 import {
   Archive,
@@ -35,10 +36,13 @@ import type {
 import { NoteEditor } from "@/components/note-editor";
 import { AccountDialog } from "@/components/account-dialog";
 import {
+  beginAccountVault,
   createBlankNote,
   db,
+  endAccountVault,
   getLibraryCounts,
   queryNotesPage,
+  restoreAccountVault,
 } from "@/lib/db/database";
 import { useLiveQuery } from "@/hooks/use-live-query";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -351,7 +355,8 @@ function LibrarySidebar({
   );
 }
 
-export function LibraryApp() {
+export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<LibraryFilter>("all");
   const [sort, setSort] = useState<NoteSort>("updated-desc");
@@ -363,6 +368,7 @@ export function LibraryApp() {
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [isMobileLibraryOpen, setIsMobileLibraryOpen] = useState(false);
   const [session, setSession] = useState<AuthSession>();
+  const [vaultKey, setVaultKey] = useState(() => db.name);
   const [syncState, setSyncState] = useState<"idle" | "syncing" | "synced" | "error">("idle");
   const [realtimeState, setRealtimeState] = useState<"offline" | "connecting" | "connected">("offline");
   const syncInFlight = useRef(false);
@@ -373,7 +379,7 @@ export function LibraryApp() {
       await db.notes.count();
       return true;
     },
-    [],
+    [vaultKey],
     false,
   );
 
@@ -386,18 +392,18 @@ export function LibraryApp() {
         query: deferredQuery,
         sort,
       }),
-    [page, filter, deferredQuery, sort],
+    [vaultKey, page, filter, deferredQuery, sort],
     EMPTY_PAGE,
   );
   const counts = useLiveQuery(
     getLibraryCounts,
-    [],
+    [vaultKey],
     { all: 0, favorites: 0, imported: 0, archived: 0 },
   );
-  const totalNotes = useLiveQuery(() => db.notes.count(), [], 0);
+  const totalNotes = useLiveQuery(() => db.notes.count(), [vaultKey], 0);
   const commandNotes = useLiveQuery(
     () => db.notes.orderBy("updatedAt").reverse().filter((note) => !note.isArchived).limit(50).toArray(),
-    [],
+    [vaultKey],
     [] as Note[],
   );
   const stats = useLiveQuery(
@@ -409,14 +415,14 @@ export function LibraryApp() {
       ]);
       return { conversations, imports, pending };
     },
-    [],
+    [vaultKey],
     { conversations: 0, imports: 0, pending: 0 },
   );
 
   const activeNoteId = selectedNoteId ?? notesPage.items[0]?.id;
   const selectedNote = useLiveQuery(
     () => (activeNoteId ? db.notes.get(activeNoteId) : undefined),
-    [activeNoteId],
+    [vaultKey, activeNoteId],
     undefined,
   );
   const blocks = useLiveQuery(
@@ -424,7 +430,7 @@ export function LibraryApp() {
       activeNoteId
         ? db.noteBlocks.where("noteId").equals(activeNoteId).sortBy("position")
         : [],
-    [activeNoteId],
+    [vaultKey, activeNoteId],
     [],
   );
 
@@ -448,6 +454,8 @@ export function LibraryApp() {
     void refreshAccount()
       .then((restored) => {
         if (!active) return;
+        setVaultKey(restoreAccountVault(restored.user.id));
+        setSelectedNoteId(undefined);
         setSession(restored);
         requestSync(restored, false);
       })
@@ -591,6 +599,27 @@ export function LibraryApp() {
     }
   }
 
+  async function authenticated(authenticatedSession: AuthSession) {
+    const shouldOpenHistory = !historyView && await db.notes.count() === 0;
+    setVaultKey(beginAccountVault(authenticatedSession.user.id));
+    setSelectedNoteId(undefined);
+    setSession(authenticatedSession);
+    setIsAccountOpen(false);
+    if (shouldOpenHistory) {
+      router.replace("/history");
+      return;
+    }
+    void runSync(authenticatedSession);
+  }
+
+  function loggedOut() {
+    setVaultKey(endAccountVault());
+    setSelectedNoteId(undefined);
+    setSession(undefined);
+    setSyncState("idle");
+    setRealtimeState("offline");
+  }
+
   function selectNote(noteId: string) {
     setSelectedNoteId(noteId);
     setIsMobileLibraryOpen(false);
@@ -639,7 +668,7 @@ export function LibraryApp() {
 
   if (!isDatabaseReady) return <LibraryLoading />;
 
-  if (totalNotes === 0) {
+  if (totalNotes === 0 && !historyView) {
     return (
       <div className="first-run-canvas relative min-h-dvh overflow-hidden">
         <div className="paint-backdrop paint-backdrop-forward" aria-hidden="true" />
@@ -750,22 +779,15 @@ export function LibraryApp() {
           open={isVaultOpen}
           onOpenChange={setIsVaultOpen}
           accessToken={session?.accessToken}
+          vaultKey={vaultKey}
         />
         <AccountDialog
           open={isAccountOpen}
           session={session}
           syncing={syncState === "syncing"}
           onOpenChange={setIsAccountOpen}
-          onAuthenticated={(authenticated) => {
-            setSession(authenticated);
-            setIsAccountOpen(false);
-            void runSync(authenticated);
-          }}
-          onLoggedOut={() => {
-            setSession(undefined);
-            setSyncState("idle");
-            setRealtimeState("offline");
-          }}
+          onAuthenticated={(authenticatedSession) => void authenticated(authenticatedSession)}
+          onLoggedOut={loggedOut}
           onSync={() => void runSync()}
         />
       </div>
@@ -816,7 +838,7 @@ export function LibraryApp() {
           <Separator orientation="vertical" className="mx-5 hidden h-7 bg-white/8 lg:block" />
           <div className="hidden items-center gap-2 text-xs text-muted-foreground lg:flex">
             <BookOpenText className="size-3.5" />
-            {FILTERS.find((item) => item.id === filter)?.label}
+            {historyView ? "History" : FILTERS.find((item) => item.id === filter)?.label}
             <ChevronRight className="size-3" />
             <span className="max-w-64 truncate text-foreground">
               {selectedNote?.title ?? "Overview"}
@@ -910,6 +932,7 @@ export function LibraryApp() {
           <NoteEditor
             note={selectedNote}
             blocks={blocks}
+            emptyView={historyView ? "history" : "library"}
             onDeleted={() => {
               setSelectedNoteId(undefined);
               if (session) requestSync(session, false);
@@ -944,6 +967,7 @@ export function LibraryApp() {
         open={isVaultOpen}
         onOpenChange={setIsVaultOpen}
         accessToken={session?.accessToken}
+        vaultKey={vaultKey}
       />
 
       <AccountDialog
@@ -951,16 +975,8 @@ export function LibraryApp() {
         session={session}
         syncing={syncState === "syncing"}
         onOpenChange={setIsAccountOpen}
-        onAuthenticated={(authenticated) => {
-          setSession(authenticated);
-          setIsAccountOpen(false);
-          void runSync(authenticated);
-        }}
-        onLoggedOut={() => {
-          setSession(undefined);
-          setSyncState("idle");
-          setRealtimeState("offline");
-        }}
+        onAuthenticated={(authenticatedSession) => void authenticated(authenticatedSession)}
+        onLoggedOut={loggedOut}
         onSync={() => void runSync()}
       />
 

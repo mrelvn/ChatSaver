@@ -14,6 +14,7 @@ import type {
   VaultBackup,
 } from "@/domain/models";
 import { toMarkdownText, toPlainText } from "@/lib/plain-text";
+import { createClientUuid } from "@/lib/client-uuid";
 
 class ChatSaverDatabase extends Dexie {
   conversations!: EntityTable<Conversation, "id">;
@@ -24,8 +25,8 @@ class ChatSaverDatabase extends Dexie {
   outbox!: EntityTable<OutboxMutation, "id">;
   syncMetadata!: EntityTable<SyncMetadata, "key">;
 
-  constructor() {
-    super("chatsaver");
+  constructor(name: string) {
+    super(name);
     this.version(1).stores({
       conversations: "&id, &externalId, title, updatedAt, syncStatus",
       messages: "&id, conversationId, role, [conversationId+sortIndex], updatedAt",
@@ -118,15 +119,68 @@ class ChatSaverDatabase extends Dexie {
   }
 }
 
-export const db = new ChatSaverDatabase();
+const GUEST_VAULT = "chatsaver:guest";
+const ACTIVE_SESSION_VAULT = "chatsaver-active-session-vault";
+
+export let db = new ChatSaverDatabase(GUEST_VAULT);
+
+export function switchLocalVault(sessionVaultId?: string): string {
+  const databaseName = sessionVaultId
+    ? `chatsaver:session:${sessionVaultId}`
+    : GUEST_VAULT;
+  if (db.name === databaseName) return databaseName;
+  db.close();
+  db = new ChatSaverDatabase(databaseName);
+  return databaseName;
+}
+
+export function beginAccountVault(userId: string): string {
+  const sessionVaultId = createClientUuid();
+  try {
+    sessionStorage.setItem(ACTIVE_SESSION_VAULT, JSON.stringify({ userId, sessionVaultId }));
+  } catch {
+    // A fresh in-memory vault is still safe when mobile privacy settings deny storage.
+  }
+  return switchLocalVault(sessionVaultId);
+}
+
+export function restoreAccountVault(userId: string): string {
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(ACTIVE_SESSION_VAULT) ?? "null") as {
+      userId?: unknown;
+      sessionVaultId?: unknown;
+    } | null;
+    if (
+      stored?.userId === userId
+      && typeof stored.sessionVaultId === "string"
+      && stored.sessionVaultId.length > 0
+    ) {
+      return switchLocalVault(stored.sessionVaultId);
+    }
+  } catch {
+    // Invalid session metadata must never select an existing account vault.
+  }
+  return beginAccountVault(userId);
+}
+
+export function endAccountVault(): string {
+  try {
+    sessionStorage.removeItem(ACTIVE_SESSION_VAULT);
+  } catch {
+    // The active database is switched below even when storage access is denied.
+  }
+  return switchLocalVault();
+}
 
 export async function clearLocalVault(): Promise<void> {
+  const databaseName = db.name;
   db.close();
-  await Dexie.delete("chatsaver");
+  await Dexie.delete(databaseName);
+  db = new ChatSaverDatabase(databaseName);
 }
 
 function makeId(): string {
-  return crypto.randomUUID();
+  return createClientUuid();
 }
 
 function now(): string {

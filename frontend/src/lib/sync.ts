@@ -6,6 +6,7 @@ import type {
   OutboxMutation,
 } from "@/domain/models";
 import { db } from "@/lib/db/database";
+import { createClientUuid } from "@/lib/client-uuid";
 
 const API_ROOT = "";
 
@@ -18,6 +19,11 @@ export interface AccountUser {
 export interface AuthSession {
   user: AccountUser;
   accessToken: string;
+  expiresAt: string;
+}
+
+export interface RegistrationChallenge {
+  email: string;
   expiresAt: string;
 }
 
@@ -49,10 +55,18 @@ interface VaultSnapshot {
 function deviceId(email: string): string {
   const accountKey = email.trim().toLocaleLowerCase();
   const key = `chatsaver-device-id:${accountKey}`;
-  const current = localStorage.getItem(key);
-  if (current) return current;
-  const created = crypto.randomUUID();
-  localStorage.setItem(key, created);
+  try {
+    const current = localStorage.getItem(key);
+    if (current) return current;
+  } catch {
+    // Mobile privacy modes can deny storage while still allowing authentication.
+  }
+  const created = createClientUuid();
+  try {
+    localStorage.setItem(key, created);
+  } catch {
+    // The server does not require the device ID to be persisted client-side.
+  }
   return created;
 }
 
@@ -89,18 +103,25 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return JSON.parse(responseText) as T;
 }
 
-export function registerAccount(input: {
+export function requestRegistration(input: {
   email: string;
   password: string;
   displayName: string;
-}): Promise<AuthSession> {
-  return request("/api/v1/auth/register", {
+}): Promise<RegistrationChallenge> {
+  return request("/api/v1/auth/register/request", {
     method: "POST",
     body: JSON.stringify({
       ...input,
       deviceId: deviceId(input.email),
       deviceName: navigator.userAgent.includes("Mobile") ? "Mobile browser" : "Desktop browser",
     }),
+  });
+}
+
+export function verifyRegistration(input: { email: string; code: string }): Promise<AuthSession> {
+  return request("/api/v1/auth/register/verify", {
+    method: "POST",
+    body: JSON.stringify(input),
   });
 }
 
@@ -167,7 +188,8 @@ export async function synchronizeVault(
   accessToken: string,
   userId: string,
 ): Promise<{ pushed: number; pulled: number }> {
-  const pending = (await db.outbox.toArray()).sort((left, right) => {
+  const vault = db;
+  const pending = (await vault.outbox.toArray()).sort((left, right) => {
     const orderDifference = mutationSyncOrder(left) - mutationSyncOrder(right);
     if (orderDifference !== 0) return orderDifference;
     return left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id);
@@ -186,24 +208,24 @@ export async function synchronizeVault(
         throw error;
       }
 
-      const repairs = await relatedRecordRepairs(batch);
+      const repairs = await relatedRecordRepairs(batch, vault);
       if (repairs.length === 0) throw error;
       for (let repairOffset = 0; repairOffset < repairs.length; repairOffset += 100) {
         await pushMutations(accessToken, repairs.slice(repairOffset, repairOffset + 100));
       }
       await pushMutations(accessToken, batch);
     }
-    await deleteUnchangedMutations(batch);
+    await deleteUnchangedMutations(batch, vault);
     pushed += batch.length;
   }
 
   const cursorKey = `server-cursor:${userId}`;
-  const syncMetadata = await db.syncMetadata.get(cursorKey);
+  const syncMetadata = await vault.syncMetadata.get(cursorKey);
   const after = syncMetadata && Number.isSafeInteger(syncMetadata.value) ? syncMetadata.value : 0;
   const snapshot = await request<VaultSnapshot>(`/api/v1/sync/snapshot?after=${after}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  await applySnapshot(snapshot, cursorKey);
+  await applySnapshot(snapshot, cursorKey, vault);
   return {
     pushed,
     pulled:
@@ -225,21 +247,24 @@ function pushMutations(
   });
 }
 
-async function relatedRecordRepairs(batch: OutboxMutation[]): Promise<OutboxMutation[]> {
+async function relatedRecordRepairs(
+  batch: OutboxMutation[],
+  vault: typeof db,
+): Promise<OutboxMutation[]> {
   const batchKeys = new Set(batch.map((item) => `${item.entityType}:${item.entityId}`));
   const repairs = new Map<string, OutboxMutation>();
 
   async function addConversation(conversationId: string): Promise<void> {
     const key = `conversation:${conversationId}`;
     if (batchKeys.has(key) || repairs.has(key)) return;
-    const conversation = await db.conversations.get(conversationId);
+    const conversation = await vault.conversations.get(conversationId);
     if (conversation) repairs.set(key, repairMutation("conversation", conversation));
   }
 
   async function addNote(noteId: string): Promise<void> {
     const key = `note:${noteId}`;
     if (batchKeys.has(key) || repairs.has(key)) return;
-    const note = await db.notes.get(noteId);
+    const note = await vault.notes.get(noteId);
     if (!note) return;
     if (note.conversationId) await addConversation(note.conversationId);
     repairs.set(key, repairMutation("note", note));
@@ -275,7 +300,7 @@ function repairMutation(
   entity: Conversation | Note,
 ): OutboxMutation {
   return {
-    id: crypto.randomUUID(),
+    id: createClientUuid(),
     entityType,
     entityId: entity.id,
     operation: "create",
@@ -303,23 +328,27 @@ function mutationSyncOrder(mutation: OutboxMutation): number {
   }[mutation.entityType];
 }
 
-async function deleteUnchangedMutations(sent: OutboxMutation[]): Promise<void> {
-  await db.transaction("rw", db.outbox, async () => {
+async function deleteUnchangedMutations(sent: OutboxMutation[], vault: typeof db): Promise<void> {
+  await vault.transaction("rw", vault.outbox, async () => {
     for (const mutation of sent) {
-      const current = await db.outbox.get(mutation.id);
+      const current = await vault.outbox.get(mutation.id);
       if (current && JSON.stringify(current.payload) === JSON.stringify(mutation.payload)) {
-        await db.outbox.delete(mutation.id);
+        await vault.outbox.delete(mutation.id);
       }
     }
   });
 }
 
-async function applySnapshot(snapshot: VaultSnapshot, cursorKey: string): Promise<void> {
-  await db.transaction(
+async function applySnapshot(
+  snapshot: VaultSnapshot,
+  cursorKey: string,
+  vault: typeof db,
+): Promise<void> {
+  await vault.transaction(
     "rw",
-    [db.conversations, db.messages, db.notes, db.noteBlocks, db.outbox, db.syncMetadata],
+    [vault.conversations, vault.messages, vault.notes, vault.noteBlocks, vault.outbox, vault.syncMetadata],
     async () => {
-      const pending = await db.outbox.toArray();
+      const pending = await vault.outbox.toArray();
       const pendingKeys = new Set(pending.map((item) => `${item.entityType}:${item.entityId}`));
 
       const remoteBlocks = snapshot.noteBlocks.filter(
@@ -343,12 +372,12 @@ async function applySnapshot(snapshot: VaultSnapshot, cursorKey: string): Promis
       const messages = snapshot.messages
         .filter((item) => !pendingKeys.has(`message:${item.id}`))
         .map((item) => ({ ...item, syncStatus: "synced" as const }));
-      await db.noteBlocks.bulkPut(remoteBlocks.map((item) => ({ ...item, syncStatus: "synced" })));
+      await vault.noteBlocks.bulkPut(remoteBlocks.map((item) => ({ ...item, syncStatus: "synced" })));
       const notes: Note[] = [];
       for (const item of snapshot.notes.filter(
         (candidate) => !pendingKeys.has(`note:${candidate.id}`),
       )) {
-        const blocks = await db.noteBlocks.where("noteId").equals(item.id).sortBy("position");
+        const blocks = await vault.noteBlocks.where("noteId").equals(item.id).sortBy("position");
         notes.push({
           ...item,
           blockCount: blocks.length,
@@ -361,24 +390,24 @@ async function applySnapshot(snapshot: VaultSnapshot, cursorKey: string): Promis
         });
       }
 
-      await db.conversations.bulkPut(conversations);
-      await db.messages.bulkPut(messages);
-      await db.notes.bulkPut(notes);
+      await vault.conversations.bulkPut(conversations);
+      await vault.messages.bulkPut(messages);
+      await vault.notes.bulkPut(notes);
 
       const deletable = (entityType: OutboxMutation["entityType"], ids: string[]) =>
         ids.filter((id) => !pendingKeys.has(`${entityType}:${id}`));
       const deletedNotes = deletable("note", snapshot.deleted.notes);
       const blocksForDeletedNotes = deletedNotes.length
-        ? await db.noteBlocks.where("noteId").anyOf(deletedNotes).primaryKeys()
+        ? await vault.noteBlocks.where("noteId").anyOf(deletedNotes).primaryKeys()
         : [];
-      await db.noteBlocks.bulkDelete([
+      await vault.noteBlocks.bulkDelete([
         ...blocksForDeletedNotes,
         ...deletable("noteBlock", snapshot.deleted.noteBlocks),
       ]);
-      await db.notes.bulkDelete(deletedNotes);
-      await db.messages.bulkDelete(deletable("message", snapshot.deleted.messages));
-      await db.conversations.bulkDelete(deletable("conversation", snapshot.deleted.conversations));
-      await db.syncMetadata.put({ key: cursorKey, value: snapshot.cursor });
+      await vault.notes.bulkDelete(deletedNotes);
+      await vault.messages.bulkDelete(deletable("message", snapshot.deleted.messages));
+      await vault.conversations.bulkDelete(deletable("conversation", snapshot.deleted.conversations));
+      await vault.syncMetadata.put({ key: cursorKey, value: snapshot.cursor });
     },
   );
 }

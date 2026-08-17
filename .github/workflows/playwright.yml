@@ -11,6 +11,21 @@ jobs:
     timeout-minutes: 60
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: chatsaver
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -27,6 +42,10 @@ jobs:
           node-version: 20
 
       - name: Build and Start Backend
+        env:
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/chatsaver
+          SPRING_DATASOURCE_USERNAME: postgres
+          SPRING_DATASOURCE_PASSWORD: password
         run: |
           cd backend
           mvn clean package -DskipTests

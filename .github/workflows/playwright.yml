@@ -2,39 +2,102 @@ name: Playwright Tests
 
 on:
   push:
-    branches: [main, master]
+    branches: [ main, master ]
   pull_request:
-    branches: [main, master]
+    branches: [ main, master ]
 
 jobs:
   test:
     timeout-minutes: 60
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: frontend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: chatsaver
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: lts/*
+          node-version: 20
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Build and Start Backend
+        env:
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/chatsaver
+          SPRING_DATASOURCE_USERNAME: postgres
+          SPRING_DATASOURCE_PASSWORD: password
+        run: |
+          cd backend
+          mvn clean package -DskipTests
+          nohup java -jar target/*.jar > ../backend.log 2>&1 &
+          cd ..
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+      - name: Install Frontend Dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Install Playwright Browsers
+        run: |
+          cd frontend
+          npx playwright install --with-deps
+
+      - name: Start Frontend
+        run: |
+          cd frontend
+          nohup npm run dev > ../frontend.log 2>&1 &
+          cd ..
+
+      - name: Wait for servers to be ready
+        run: npx wait-on tcp:3000 tcp:8080 --timeout 120000
 
       - name: Run Playwright tests
-        run: npx playwright test --project=chromium
+        env:
+          MAILTRAP_API_TOKEN: ${{ secrets.MAILTRAP_API_TOKEN }}
+          MAILTRAP_INBOX_ID: ${{ secrets.MAILTRAP_INBOX_ID }}
+        run: |
+          cd frontend
+          npx playwright test
 
-      - name: Upload Playwright report
-        if: ${{ !cancelled() }}
+      - name: Print Server Logs on Failure
+        if: failure()
+        run: |
+          echo "=== BACKEND LOGS ==="
+          cat backend.log || true
+          echo "=== FRONTEND LOGS ==="
+          cat frontend.log || true
+
+      - name: Upload Logs on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-logs
+          path: |
+            backend.log
+            frontend.log
+
+      - name: Upload Playwright Report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report

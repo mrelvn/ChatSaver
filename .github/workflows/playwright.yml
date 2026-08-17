@@ -2,73 +2,77 @@ name: Playwright Tests
 
 on:
   push:
-    branches: [main, master]
+    branches: [ main, master ]
   pull_request:
-    branches: [main, master]
+    branches: [ main, master ]
 
 jobs:
   test:
-    timeout-minutes: 30
+    timeout-minutes: 60
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      # 1. Setup Java for Spring Boot Backend
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # 2. Start Spring Boot Backend in Background (Test Profile)
-      - name: Build and Start Backend
-        run: |
-          ./mvnw spring-boot:run -Dspring-boot.run.profiles=test &
-        # Backend folder agar alag directory me hai toh 'working-directory: backend' add karein
-
-      # 3. Setup Node.js for Frontend
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
 
-      # 4. Install Frontend Dependencies
-      - name: Install dependencies
-        working-directory: frontend
-        run: npm ci
-
-      # 5. Install Playwright Chromium Browser
-      - name: Install Playwright browsers
-        working-directory: frontend
-        run: npx playwright install --with-deps chromium
-
-      # 6. Start Frontend Server in Background
-      - name: Start Frontend Server
-        working-directory: frontend
-        run: npm run dev &
-
-      # 7. Wait for Servers to be Ready
-      - name: Wait for Frontend & Backend
+      - name: Build and Start Backend
         run: |
-          npx wait-on http://localhost:3000 http://localhost:8080 --timeout 60000
+          cd backend
+          mvn clean package -DskipTests
+          nohup java -jar target/*.jar > backend.log 2>&1 &
+          cd ..
 
-      # 8. Run Playwright Tests with Secrets
+      - name: Install Frontend Dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Install Playwright Browsers
+        run: |
+          cd frontend
+          npx playwright install --with-deps
+
+      - name: Start Frontend
+        run: |
+          cd frontend
+          nohup npm run dev > frontend.log 2>&1 &
+          cd ..
+
+      - name: Wait for servers to be ready
+        run: npx wait-on tcp:3000 tcp:8080 --timeout 120000
+
       - name: Run Playwright tests
-        working-directory: frontend
         env:
-          MAILTRAP_API_TOKEN: "${{ secrets.MAILTRAP_API_TOKEN }}"
-          MAILTRAP_INBOX_ID: "${{ secrets.MAILTRAP_INBOX_ID }}"
-        run: npx playwright test --project=chromium
+          MAILTRAP_API_TOKEN: ${{ secrets.MAILTRAP_API_TOKEN }}
+          MAILTRAP_INBOX_ID: ${{ secrets.MAILTRAP_INBOX_ID }}
+        run: |
+          cd frontend
+          npx playwright test
 
-      # 9. Upload Playwright Report
-      - name: Upload Playwright report
-        if: ${{ !cancelled() }}
+      - name: Upload Logs on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-logs
+          path: |
+            backend.log
+            frontend.log
+
+      - name: Upload Playwright Report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
           path: frontend/playwright-report/
-          retention-days: 14
+          retention-days: 30

@@ -30,7 +30,7 @@ jobs:
         run: |
           cd backend
           mvn clean package -DskipTests
-          nohup java -jar target/*.jar > backend.log 2>&1 &
+          nohup java -jar target/*.jar > ../backend.log 2>&1 &
           cd ..
 
       - name: Install Frontend Dependencies
@@ -46,7 +46,7 @@ jobs:
       - name: Start Frontend
         run: |
           cd frontend
-          nohup npm run dev > frontend.log 2>&1 &
+          nohup npm run dev > ../frontend.log 2>&1 &
           cd ..
 
       - name: Wait for servers to be ready
@@ -59,6 +59,14 @@ jobs:
         run: |
           cd frontend
           npx playwright test
+
+      - name: Print Server Logs on Failure
+        if: failure()
+        run: |
+          echo "=== BACKEND LOGS ==="
+          cat backend.log || true
+          echo "=== FRONTEND LOGS ==="
+          cat frontend.log || true
 
       - name: Upload Logs on Failure
         if: failure()
